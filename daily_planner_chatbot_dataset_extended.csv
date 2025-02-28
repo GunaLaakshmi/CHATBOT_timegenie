@@ -1,0 +1,28 @@
+User Input,Intent,Entity,Additional Info,Chatbot Response
+Remind me to drink water every 2 hours,Set Reminder,Drink Water,Every 2 hours,Got it! I'll remind you to drink water every 2 hours.
+Schedule a meeting with John at 3 PM,Schedule Event,Meeting,"John, 3 PM",Your meeting with John has been scheduled for 3 PM.
+What's my schedule for today?,View Schedule,Schedule,Today,Here's your schedule for today: [list of events].
+Add grocery shopping to my to-do list,Add Task,Grocery Shopping,N/A,I've added 'Grocery Shopping' to your to-do list.
+What are my pending tasks?,View Tasks,Tasks,N/A,Your pending tasks are: [task list].
+Cancel my 5 PM workout session,Cancel Event,Workout,5 PM,Your 5 PM workout session has been canceled.
+Wake me up at 6:30 AM,Set Alarm,Alarm,6:30 AM,Alarm set for 6:30 AM.
+Remind me to call mom every Sunday at 8 PM,Set Reminder,Call Mom,"Every Sunday, 8 PM",I'll remind you to call your mom every Sunday at 8 PM.
+Suggest a morning routine for productivity,Suggest Routine,Morning Routine,Productivity,"A productive morning routine: 1. Wake up early, 2. Meditate, 3. Exercise, 4. Plan your day, 5. Work on your priorities."
+How can I stay consistent with my workouts?,Habit Tracking,Workout,N/A,"Try setting achievable goals, tracking progress, and rewarding yourself for consistency!"
+Remind me to take my medicine at 9 AM and 9 PM,Set Reminder,Take Medicine,9 AM & 9 PM,I'll remind you to take your medicine at 9 AM and 9 PM.
+List my appointments for this week,View Schedule,Appointments,This Week,Here are your appointments for this week: [list].
+What's the best time to work out?,General Inquiry,Workout,N/A,"The best workout time depends on your schedule, but morning workouts can boost energy and focus!"
+Schedule a study session for 2 hours tomorrow,Schedule Event,Study,"2 hours, Tomorrow",Your 2-hour study session has been scheduled for tomorrow.
+Remind me to submit my assignment tomorrow at 10 AM,Set Reminder,Submit Assignment,"Tomorrow, 10 AM",I'll remind you to submit your assignment tomorrow at 10 AM.
+What are my tasks for this weekend?,View Tasks,Tasks,This Weekend,Your tasks for this weekend: [task list].
+Schedule a doctor’s appointment for next Monday at 4 PM,Schedule Event,Doctor Appointment,"Next Monday, 4 PM",Your doctor's appointment has been scheduled for next Monday at 4 PM.
+Remind me to pay my electricity bill on the 5th of every month,Set Reminder,Pay Electricity Bill,5th of every month,I'll remind you to pay your electricity bill on the 5th of every month.
+Cancel my lunch meeting with Sarah tomorrow,Cancel Event,Lunch Meeting,"Tomorrow, Sarah",Your lunch meeting with Sarah tomorrow has been canceled.
+How do I improve my time management skills?,General Inquiry,Time Management,N/A,"Try using the Pomodoro technique, prioritizing tasks, and setting daily goals to improve time management."
+List my goals for this month,View Tasks,Goals,This Month,Here are your goals for this month: [list].
+Schedule a call with the project team at 5 PM on Wednesday,Schedule Event,Project Team Call,"Wednesday, 5 PM",Your call with the project team has been scheduled for Wednesday at 5 PM.
+Suggest an evening relaxation routine,Suggest Routine,Evening Routine,Relaxation,"A relaxing evening routine: 1. Unplug from screens, 2. Take a warm shower, 3. Read a book, 4. Meditate, 5. Sleep early."
+Track my daily exercise habits,Habit Tracking,Exercise,Daily,I'll help you track your daily exercise habits and keep you motivated!
+Wake me up at 7 AM on weekdays and 9 AM on weekends,Set Alarm,Alarm,"7 AM (Weekdays), 9 AM (Weekends)",Alarms set for 7 AM on weekdays and 9 AM on weekends.
+Remind me to take a break every 45 minutes while working,Set Reminder,Take Break,Every 45 minutes,I'll remind you to take a break every 45 minutes while working.
+What should I do before sleeping for better rest?,General Inquiry,Sleep Routine,N/A,"Try avoiding screens, reading a book, meditating, and setting a regular sleep schedule for better rest."
