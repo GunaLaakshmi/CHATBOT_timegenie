@@ -1,0 +1,228 @@
+import streamlit as st
+import requests
+import pandas as pd
+from datetime import datetime
+
+# API Backend URL
+API_URL = "http://127.0.0.1:5000"
+
+# 🔹 Title Section with Improved Styling
+st.markdown("""
+    <style>
+    .title-container {
+        background: linear-gradient(-45deg, #FF6B6B, #4ECDC4, #FFD93D, #6C63FF);
+        background-size: 400% 400%;
+        animation: gradient 15s ease infinite;
+        padding: 30px;
+        border-radius: 20px;
+        margin-bottom: 30px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        text-align: center;
+    }
+    .title-text {
+        color: white;
+        font-size: 2.8em;
+        font-weight: bold;
+    }
+    .subtitle-text {
+        color: white;
+        font-size: 1.2em;
+        margin-top: 10px;
+    }
+    </style>
+    <div class="title-container">
+        <div class="title-text">✨ Task Genie</div>
+        <div class="subtitle-text">Your Intelligent Daily Planning Assistant</div>
+    </div>
+""", unsafe_allow_html=True)
+
+# 🔹 Sidebar Information
+st.sidebar.title("📜 Task History")
+st.sidebar.info("""
+**Task Genie** helps you:
+- 📝 Schedule tasks efficiently
+- ⏰ Set reminders for key activities
+- ✅ Track and manage tasks with ease
+""")
+
+# 🔹 Fetch Scheduled Tasks and Reminders with Better Handling
+try:
+    history_response = requests.get(f"{API_URL}/schedule")
+    reminders_response = requests.get(f"{API_URL}/reminders")
+
+    # 🎯 Display Scheduled Tasks
+    if history_response.status_code == 200:
+        tasks = history_response.json().get("tasks", [])
+        if tasks:
+            selected_task = st.sidebar.radio(
+                "📝 Scheduled Tasks", 
+                [f"{task['task']} - {task['time']} ({task['priority']})" for task in tasks]
+            )
+
+    # 🔔 Display Reminders
+    st.sidebar.markdown("### 🔔 Reminders")  
+    if reminders_response.status_code == 200:
+        reminders = reminders_response.json().get("reminders", [])
+        if reminders:
+            for reminder in reminders:
+                st.sidebar.write(f"📌 {reminder['task']} - {reminder['time']} ({reminder['priority']})")
+        else:
+            st.sidebar.info("No reminders set.")
+    else:
+        st.sidebar.warning("Failed to fetch reminders.")
+
+except requests.exceptions.ConnectionError:
+    st.sidebar.error("📡 Connection failed. Check server status.")
+
+# 🔹 Tabs
+tab1, tab2, tab3 = st.tabs(["🎯 Chat & Plan", "📊 Schedule Overview", "📖 Help & Guide"])
+
+# 📌 Chat & Planning
+with tab1:
+    if "messages" not in st.session_state:
+        st.session_state["messages"] = [{
+            "role": "assistant",
+            "content": "👋 Hello! I'm **Task Genie**, your Daily Planner Assistant. "
+                       "I can help you schedule tasks, set reminders, and organize your day."
+        }]
+
+    # 🔹 Display Chat Messages
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+
+    user_input = st.chat_input("💬 Ask me about your schedule...")
+    if user_input:
+        st.session_state.messages.append({"role": "user", "content": user_input})
+
+        # 🔹 Send request to backend API
+        try:
+            response = requests.post(f"{API_URL}/daily-planner", json={"message": user_input})
+            response.raise_for_status()  # Raises an error for bad responses (4xx, 5xx)
+            response_data = response.json()
+
+            bot_response = response_data.get("response", "I'm not sure how to respond.")
+            entities = response_data.get("entities", {})
+
+            # 🔹 Display Extracted Entities
+            entity_text = "\n\n🔍 **Extracted Information:**"
+            if entities.get("PERSON"):
+                entity_text += f"\n- **Person(s):** {', '.join(entities['PERSON'])}"
+            if entities.get("DATE"):
+                entity_text += f"\n- **Date:** {entities['DATE']}"
+            if entities.get("TIME"):
+                entity_text += f"\n- **Time:** {entities['TIME']}"
+
+            if entities:
+                bot_response += entity_text
+
+            st.session_state.messages.append({"role": "assistant", "content": bot_response})
+            st.rerun()
+
+        except requests.exceptions.RequestException as e:
+            st.error(f"❌ API request failed: {e}")
+
+    # 🔹 Add a Task
+
+    # 🔹 Add a Task (Only in Tab 1)
+    st.markdown("## ✏️ Add a New Task")
+
+    with st.form("task_form", clear_on_submit=True):
+        task_name = st.text_input("Task Name", placeholder="e.g., Morning Exercise")
+        task_date = st.date_input("Select Date")  # ✅ Added date input
+        task_time = st.time_input("Select Time")
+        priority = st.selectbox("Priority", ["Low", "Medium", "High"])
+        reminder = st.checkbox("🔔 Set Reminder")
+        submit_button = st.form_submit_button("➕ Add to Task")
+
+        if submit_button and task_name:
+            formatted_time = task_time.strftime("%H:%M")
+            formatted_date = task_date.strftime("%Y-%m-%d")  # ✅ Format date properly
+
+            task_data = {
+                "task": task_name,
+                "date": formatted_date,  # ✅ Include date in API request
+                "time": formatted_time,
+                "priority": priority,
+                "reminder": reminder
+            }
+
+            try:
+                response = requests.post(f"{API_URL}/add-task", json=task_data)
+                if response.status_code == 200:
+                    st.success(f"✅ Task '{task_name}' added successfully for {formatted_date}!")
+                    st.rerun()  # ✅ Refresh after task addition
+                else:
+                    st.error("❌ Failed to add task.")
+            except requests.exceptions.RequestException:
+                st.error("❌ Could not connect to the server.")
+
+# 📌 Tab 2: Schedule Overview (No "Add Task" form here)
+with tab2:
+    st.markdown("## 📊 Schedule Overview")
+    try:
+        schedule_response = requests.get(f"{API_URL}/schedule")
+        if schedule_response.status_code == 200:
+            tasks = schedule_response.json().get("tasks", [])
+            if tasks:
+                df = pd.DataFrame(tasks)
+                
+                # ✅ Show task, date, time, priority, and status
+                st.dataframe(df[['task', 'date', 'time', 'priority', 'status']])
+                
+                for task in tasks:
+                    col1, col2, col3 = st.columns([3, 1, 1])
+                    with col1:
+                        # ✅ Show date along with task details
+                        st.write(f"📅 {task['date']} - **{task['task']}** - 🕒 {task['time']} ({task['priority']})")
+
+                    with col2:
+                        # ✅ Mark as Completed button
+                        if task["status"] == "pending":
+                            if st.button("✅ Mark as Completed", key=f"complete_{task['id']}"):
+                                complete_response = requests.post(f"{API_URL}/complete-task/{task['id']}")
+                                if complete_response.status_code == 200:
+                                    st.success(f"🎉 Task '{task['task']}' marked as completed!")
+                                    st.rerun()
+                                else:
+                                    st.error("❌ Failed to update task status.")
+
+                    with col3:
+                        # 🗑️ Delete button
+                        if st.button("🗑️ Delete", key=f"delete_{task['id']}"):
+                            delete_response = requests.delete(f"{API_URL}/delete-task/{task['id']}")
+                            if delete_response.status_code == 200:
+                                st.success(f"✅ Task '{task['task']}' deleted successfully!")
+                                st.rerun()
+                            else:
+                                st.error("❌ Failed to delete task.")
+            else:
+                st.info("🌟 No tasks found! Use Task Genie to add one.")
+    except requests.exceptions.ConnectionError:
+        st.error("📡 Connection failed. Check the API server.")
+
+# 📌 Help & Guide
+with tab3:
+    st.markdown("""
+📖 How to Use Task Genie
+Task Genie is your intelligent daily planning assistant, helping you manage tasks efficiently through an interactive chatbot.
+
+🎯 Chat & Plan 🗣️
+
+1. Type messages like "Schedule a meeting tomorrow at 3 PM" to create tasks.
+2. Ask "Show my schedule for the week" to get an overview.
+3. Get personalized responses based on extracted details like dates, times, and priorities.
+
+📝 Add a Task Manually
+
+1. Enter the task name, date, time, and priority in the input form.
+2. Choose 🔔 Set Reminder if needed.
+3. Click ➕ Add to Task to save it.
+
+📊 Manage Your Tasks
+
+1. View all scheduled tasks in Schedule Overview.
+2. ✅ Mark tasks as completed when done.
+3.🗑️ Delete tasks that are no longer needed.
+    """)
+
