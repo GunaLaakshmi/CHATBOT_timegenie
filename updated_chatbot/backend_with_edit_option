@@ -1,0 +1,185 @@
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import random
+import pandas as pd
+import difflib
+from datetime import datetime
+import spacy  
+
+
+app = Flask(__name__)
+CORS(app)  # Enable CORS for frontend access
+
+# Load spaCy NLP model
+nlp = spacy.load("en_core_web_sm")
+
+# In-memory storage for tasks
+tasks = []
+
+# Function to extract entities (Date, Time, Person) using spaCy
+def extract_entities(text):
+    doc = nlp(text)
+
+    date_entity = None
+    time_entity = None
+    person_entities = []
+
+    for ent in doc.ents:
+        if ent.label_ == "DATE":
+            date_entity = ent.text
+        elif ent.label_ == "TIME":
+            time_entity = ent.text
+        elif ent.label_ == "PERSON":
+            person_entities.append(ent.text)
+
+    return {
+        "DATE": date_entity,
+        "TIME": time_entity,
+        "PERSON": person_entities if person_entities else None
+    }
+
+@app.route("/add-task", methods=["POST"])
+def add_task():
+    """Handles adding a new task."""
+    data = request.json
+    try:
+        task = {
+            "id": len(tasks) + 1,
+            "task": data["task"],
+            "date": data.get("date", "Not specified"),  # Task date added
+            "time": data["time"],
+            "priority": data["priority"],
+            "reminder": data.get("reminder", False),
+            "status": "pending",
+            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        tasks.append(task)
+        return jsonify({"message": "Task added successfully", "task": task}), 200
+    except KeyError:
+        return jsonify({"error": "Invalid task data"}), 400
+
+@app.route("/schedule", methods=["GET"])
+def get_schedule():
+    """Returns the list of scheduled tasks, updating status if overdue."""
+    current_time = datetime.now().time()
+
+    for task in tasks:
+        try:
+            task_time = datetime.strptime(task["time"], "%H:%M").time()
+            if task["status"] == "pending" and current_time > task_time:
+                task["status"] = "overdue"
+        except ValueError:
+            continue  # Ignore invalid time formats
+
+    return jsonify({"tasks": tasks})
+
+@app.route("/reminders", methods=["GET"])
+def get_reminders():
+    """Returns tasks with reminders enabled."""
+    reminders = [task for task in tasks if task.get("reminder", False)]
+    return jsonify({"reminders": reminders})
+
+@app.route("/complete-task/<int:task_id>", methods=["POST"])
+def complete_task(task_id):
+    """Marks a task as completed."""
+    for task in tasks:
+        if task["id"] == task_id:
+            task["status"] = "completed"
+            return jsonify({"message": "Task marked as completed"})
+    return jsonify({"error": "Task not found"}), 404
+
+@app.route("/delete-task/<int:task_id>", methods=["DELETE"])
+def delete_task(task_id):
+    """Deletes a task by its ID."""
+    global tasks
+    task_to_delete = next((task for task in tasks if task["id"] == task_id), None)
+
+    if task_to_delete:
+        tasks.remove(task_to_delete)
+        return jsonify({"message": f"Task '{task_to_delete['task']}' deleted successfully"})
+
+    return jsonify({"error": "Task not found"}), 404
+
+@app.route("/update-task/<int:task_id>", methods=["PUT"])
+def update_task(task_id):
+    """Allows users to edit an existing task."""
+    data = request.json
+    for task in tasks:
+        if task["id"] == task_id:
+            # Update fields if provided, else keep existing values
+            task["task"] = data.get("task", task["task"])
+            task["date"] = data.get("date", task["date"])
+            task["time"] = data.get("time", task["time"])
+            task["priority"] = data.get("priority", task["priority"])
+            task["reminder"] = data.get("reminder", task["reminder"])
+            return jsonify({"message": "Task updated successfully!", "task": task}), 200
+    
+    return jsonify({"error": "Task not found!"}), 404
+
+@app.route("/edit-task/<int:task_id>", methods=["PUT"])
+def edit_task(task_id):
+    """Edits an existing task based on task ID."""
+    data = request.json
+    task = next((task for task in tasks if task["id"] == task_id), None)
+
+    if not task:
+        return jsonify({"error": "Task not found"}), 404
+
+    # Update only the provided fields
+    task["task"] = data.get("task", task["task"])
+    task["date"] = data.get("date", task["date"])
+    task["time"] = data.get("time", task["time"])
+    task["priority"] = data.get("priority", task["priority"])
+    task["reminder"] = data.get("reminder", task["reminder"])
+
+    return jsonify({"message": "Task updated successfully", "task": task}), 200
+
+@app.route("/upcoming-tasks", methods=["GET"])
+def upcoming_tasks():
+    """Returns tasks scheduled for today and upcoming tasks."""
+    today = datetime.now().date()
+    upcoming = [task for task in tasks if datetime.strptime(task["date"], "%Y-%m-%d").date() >= today]
+    
+    return jsonify({"upcoming_tasks": upcoming})
+
+@app.route("/daily-planner", methods=["POST"])
+def chatbot_response():
+    """Handles chatbot responses based on user messages with NLP improvements."""
+    user_message = request.json.get("message", "").lower()
+
+    # Extract named entities
+    detected_entities = extract_entities(user_message)
+
+    response_text = ""
+
+    # Handling scheduling-related queries
+    if "schedule" in user_message or "task" in user_message:
+        if "upcoming" in user_message:
+            upcoming_response = requests.get("http://127.0.0.1:5000/upcoming-tasks").json()
+            tasks = upcoming_response.get("upcoming_tasks", [])
+            if tasks:
+                response_text = "Here are your upcoming tasks:\n"
+                for task in tasks:
+                    response_text += f"📌 {task['task']} at {task['time']} on {task['date']}\n"
+            else:
+                response_text = "You have no upcoming tasks scheduled."
+        else:
+            response_text = "Do you want to schedule something specific? Let me know!"
+    
+    # Entity extraction information
+    extracted_info = ""
+    if detected_entities["PERSON"]:
+        extracted_info += f"👤 **Person(s):** {', '.join(detected_entities['PERSON'])}\n"
+    if detected_entities["DATE"]:
+        extracted_info += f"📅 **Date:** {detected_entities['DATE']}\n"
+    if detected_entities["TIME"]:
+        extracted_info += f"⏰ **Time:** {detected_entities['TIME']}\n"
+
+    return jsonify({
+        "response": response_text.strip(),
+        "entities": extracted_info if extracted_info else "No specific details detected."
+    })
+
+if __name__ == "__main__":
+    app.run(debug=True)
+
