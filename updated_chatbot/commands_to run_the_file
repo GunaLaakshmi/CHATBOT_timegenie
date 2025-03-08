@@ -1,0 +1,8 @@
+
+backend
+1. change the directory -cd Downloads/chatbot
+2. python backend.py
+
+frontend
+1. change the directory -cd Downloads/chatbot
+2. streamlit run frontend.py 
