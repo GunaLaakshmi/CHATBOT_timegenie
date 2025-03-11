@@ -35,29 +35,11 @@ st.markdown("""
         font-size: 1.4em;
         margin-top: 10px;
     }
-    .floating-button {
-        position: fixed;
-        bottom: 20px;
-        right: 20px;
-        background: #6C63FF;
-        color: white;
-        font-size: 1.4em;
-        padding: 15px 25px;
-        border-radius: 50px;
-        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
-        cursor: pointer;
-        transition: transform 0.3s ease-in-out;
-    }
-    .floating-button:hover {
-        transform: scale(1.1);
-        background: #4ECDC4;
-    }
     </style>
     <div class="title-container">
         <div class="title-text">✨ Task Genie</div>
         <div class="subtitle-text">Your Intelligent Daily Planning Assistant</div>
     </div>
-    <button class="floating-button" onclick="alert('Add a new task!')">➕</button>
 """, unsafe_allow_html=True)
 
 
@@ -210,11 +192,6 @@ with tab1:
         # Append bot response and rerun
         st.session_state.messages.append({"role": "assistant", "content": bot_response})
         st.rerun()
-
-    # Show "➕ Add Task" button when scheduling is suggested
-    if "show_task_form" in st.session_state:
-        if st.button("➕ Add Task"):
-            del st.session_state["show_task_form"]
 
     # 🔹 Add a Task
     st.markdown("## ✏️ Add a New Task")
