@@ -14,3 +14,6 @@
 ✅ **Sidebar Insights:** Provides a quick summary of scheduled tasks and helpful usage tips.  
 
 With **Task Genie**, users can efficiently plan their day, stay productive, and keep their schedule clutter-free. 🚀
+
+reminder notification in phone
+![SMS_rem](https://github.com/user-attachments/assets/d3f04907-1794-4af7-850b-9130c280b95e)
