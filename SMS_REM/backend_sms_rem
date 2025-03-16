@@ -1,0 +1,249 @@
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import os
+import re
+import pandas as pd
+import spacy
+import google.generativeai as genai
+from datetime import datetime, timedelta
+from dotenv import load_dotenv
+from twilio.rest import Client
+import threading
+import time
+
+
+# Load environment variables
+load_dotenv()
+genai.configure(api_key=os.getenv("GENAI_API_KEY"))
+
+# Initialize Flask app
+app = Flask(__name__)
+CORS(app)  # Enable CORS
+
+# Load spaCy NLP model
+nlp = spacy.load("en_core_web_sm")
+
+# In-memory storage for tasks
+tasks = []
+
+# Function to extract entities (Date, Time, Person) using spaCy
+def extract_entities(text):
+    doc = nlp(text)
+    date_entity = None
+    time_entity = None
+    person_entities = []
+
+    for ent in doc.ents:
+        if ent.label_ == "DATE":
+            date_entity = ent.text
+        elif ent.label_ == "TIME":
+            time_entity = ent.text
+        elif ent.label_ == "PERSON":
+            person_entities.append(ent.text)
+
+    return {
+        "DATE": date_entity,
+        "TIME": time_entity,
+        "PERSON": person_entities if person_entities else None
+    }
+
+
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
+TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
+
+twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+
+def send_sms_reminder(phone_number, message):
+    try:
+        print(f"📲 Sending SMS to: {phone_number}")
+        
+        response = twilio_client.messages.create(
+            body=message,
+            from_=TWILIO_PHONE_NUMBER,
+            to=phone_number
+        )
+        
+        print(f"✅ SMS Sent! SID: {response.sid}")
+        return True
+    except Exception as e:
+        print(f"❌ Failed to send reminder: {e}")
+        return False
+
+
+def format_phone_number(phone_number):
+    """ Ensure phone number has +91 and is valid """
+    phone_number = phone_number.strip()
+
+    # Add +91 if missing
+    if not phone_number.startswith("+91"):
+        phone_number = "+91" + phone_number
+
+    # Validate number format (should be +91 followed by 10 digits)
+    if not re.match(r"^\+91[6-9]\d{9}$", phone_number):
+        raise ValueError("Invalid Indian phone number format. Use +91XXXXXXXXXX.")
+
+    return phone_number 
+
+def talk_with_gemini(user_input):  
+    try:  
+        is_detailed_request = any(word in user_input.lower() for word in ["elaborate", "explain in detail", "tell me more"])
+
+        if is_detailed_request:
+            prompt = f"Provide a detailed explanation for: {user_input}"
+        else:
+            prompt = f"Provide a concise response (around 10 lines max) for: {user_input}"
+
+        response = genai.GenerativeModel("gemini-2.0-flash").generate_content(prompt)  
+        return response.text.strip() if hasattr(response, "text") and response.text else "Couldn't process that. Try again!"  
+    except Exception as e:  
+        return f"AI Error: {e}"  
+
+@app.route("/add-task", methods=["POST"])
+def add_task():
+    data = request.json
+    try:
+        # Get phone from request
+        phone = data.get("phone", "+919597364035")  # Default phone if not provided
+        
+        # Format the phone number
+        formatted_phone = format_phone_number(phone)
+        
+        task = {
+            "id": len(tasks) + 1,
+            "task": data["task"],
+            "date": data.get("date", "Not specified"),
+            "time": data.get("time"),
+            "priority": data.get("priority"),
+            "reminder": data.get("reminder", True),
+            "phone": formatted_phone,  # Use the formatted phone from request
+            "status": "pending",
+            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        tasks.append(task)
+        return jsonify({"message": "Task added successfully", "task": task}), 200
+    except KeyError as e:
+        return jsonify({"error": f"Invalid task data: missing {str(e)}"}), 400
+    except ValueError as e:
+        return jsonify({"error": f"Phone number error: {str(e)}"}), 400    
+
+# Route to get scheduled tasks
+@app.route("/schedule", methods=["GET"])
+def get_schedule():
+    return jsonify({"tasks": tasks})
+
+# Function to check and send reminders
+def reminder_scheduler():
+    while True:
+        try:
+            now = datetime.now()
+            for task in tasks:
+                if (task["reminder"] and 
+                    task["date"] != "Not specified" and 
+                    task["time"] and 
+                    task.get("phone") and  # Fixed: Check if phone exists
+                    task["status"] != "completed"):  # Fixed: Don't remind for completed tasks
+                    
+                    task_datetime_str = f"{task['date']} {task['time']}"
+                    try:
+                        task_datetime = datetime.strptime(task_datetime_str, "%Y-%m-%d %H:%M")
+                        reminder_time = task_datetime - timedelta(minutes=10)  # Send reminder 10 mins before task
+
+                        # Fixed: Compare datetime objects properly
+                        current_datetime = now.replace(second=0, microsecond=0)
+                        reminder_datetime = reminder_time.replace(second=0, microsecond=0)
+                        
+                        if current_datetime == reminder_datetime and not task.get("notified", False):
+                            # Apply phone number formatting
+                            formatted_phone = format_phone_number(task["phone"])
+                            send_sms_reminder(formatted_phone, f"Reminder: {task['task']} is scheduled at {task['time']} on {task['date']}.")
+                            task["notified"] = True  # Mark task as notified
+                    except ValueError as e:
+                        print(f"Invalid date format for task {task['id']}: {e}")
+        except Exception as e:
+            print(f"Error in reminder scheduler: {e}")
+            
+        time.sleep(60)  # Check every minute
+
+# Fixed: Only start thread if not in debug mode
+if os.environ.get("FLASK_ENV") != "development":
+    reminder_thread = threading.Thread(target=reminder_scheduler, daemon=True)
+    reminder_thread.start()
+
+# Route to mark a task as completed
+@app.route("/complete-task/<int:task_id>", methods=["POST"])
+def complete_task(task_id):
+    for task in tasks:
+        if task["id"] == task_id:
+            task["status"] = "completed"
+            return jsonify({"message": "Task marked as completed"})
+    return jsonify({"error": "Task not found"}), 404
+
+# Route to delete a task
+@app.route("/delete-task/<int:task_id>", methods=["DELETE"])
+def delete_task(task_id):
+    global tasks
+    task_to_delete = next((task for task in tasks if task["id"] == task_id), None)
+    if task_to_delete:
+        tasks.remove(task_to_delete)
+        return jsonify({"message": f"Task '{task_to_delete['task']}' deleted successfully"})
+    return jsonify({"error": "Task not found"}), 404
+
+# Route to update a task
+@app.route("/update-task/<int:task_id>", methods=["PUT"])
+def update_task(task_id):
+    data = request.json
+    for task in tasks:
+        if task["id"] == task_id:
+            task["task"] = data.get("task", task["task"])
+            task["date"] = data.get("date", task["date"])
+            task["time"] = data.get("time", task["time"])
+            task["priority"] = data.get("priority", task["priority"])
+            task["reminder"] = data.get("reminder", task["reminder"])
+            # Fixed: Update phone if provided
+            if "phone" in data:
+                task["phone"] = data.get("phone")
+            # Reset notification status if date or time changes
+            if data.get("date") != task["date"] or data.get("time") != task["time"]:
+                task["notified"] = False
+            return jsonify({"message": "Task updated successfully!", "task": task}), 200
+    return jsonify({"error": "Task not found!"}), 404
+
+# Allowed keywords related to task scheduling
+ALLOWED_KEYWORDS = ["task", "schedule", "reminder", "meeting", "appointment", "todo", "deadline", "event", "plan", "work", "agenda"]
+
+@app.route("/daily-planner", methods=["POST"])
+def chatbot_response():
+    user_message = request.json.get("message", "").lower()
+    detected_entities = extract_entities(user_message)
+
+    # Check if user message contains any relevant task scheduling words
+    if not any(keyword in user_message for keyword in ALLOWED_KEYWORDS):
+        return jsonify({"response": "❌ Sorry, I can only assist with task scheduling and planning-related topics."})
+
+    if "schedule" in user_message or "task" in user_message:
+        return jsonify({"response": get_schedule().json})
+
+    response_text = talk_with_gemini(user_message)
+    
+    extracted_info = ""
+    if detected_entities["PERSON"]:
+        extracted_info += f"👤 Person(s): {', '.join(detected_entities['PERSON'])}\n"
+    if detected_entities["DATE"]:
+        extracted_info += f"📅 Date: {detected_entities['DATE']}\n"
+    if detected_entities["TIME"]:
+        extracted_info += f"⏰ Time: {detected_entities['TIME']}\n"
+
+    return jsonify({
+        "response": response_text.strip(),
+        "entities": extracted_info if extracted_info else "No specific details detected."
+    })
+
+# Route for reminders
+@app.route("/reminders", methods=["GET"])
+def get_reminders():
+    reminders = [task for task in tasks if task.get("reminder", False)]
+    return jsonify({"reminders": reminders})
+
+if __name__ == "__main__":
+    app.run(debug=True)
